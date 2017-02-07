@@ -1,10 +1,29 @@
 use std::str;
 
-struct InputStream<'a> {
+pub struct InputStream<'a> {
     line: i32,
     col: i32,
     cur: Option<char>,
     iter: str::Chars<'a>,
+}
+
+impl<'a> Iterator for InputStream<'a> {
+    type Item = char;
+
+    fn next(&mut self) -> Option<char> {
+        let cur = self.cur.clone();
+        let next = self.iter.next();
+
+        if next == Some('\n') {
+            self.line += 1;
+            self.col = 1;
+        } else {
+            self.col += 1;
+        }
+
+        self.cur = next;
+        cur
+    }
 }
 
 impl<'a> InputStream<'a> {
@@ -18,21 +37,6 @@ impl<'a> InputStream<'a> {
 
         stream.cur = stream.iter.next();
         stream
-    }
-
-    pub fn next(&mut self) -> Option<char> {
-        let cur = self.cur.clone();
-        let next = self.iter.next();
-
-        if next == Some('\n') {
-            self.line += 1;
-            self.col = 1;
-        } else {
-            self.col += 1;
-        }
-
-        self.cur = next;
-        cur
     }
 
     pub fn peek(&self) -> Option<char> {
