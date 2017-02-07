@@ -1,15 +1,10 @@
 use input_stream::InputStream;
 use regex::Regex;
 
-const KEYWORDS: &'static str = " if then else lambda true false ";
-lazy_static! {
-    static ref IS_ID_START: Regex = Regex::new(r"[a-z_]/i").unwrap();
-}
-
 #[derive(Clone)]
 pub enum Token {
     Num(i32),
-    Punc(String),
+    Punc(char),
     Str(String),
     Kw(String),
     Var(String),
@@ -31,19 +26,19 @@ impl<'a> TokenStream<'a> {
     }
 
     fn read_number(&mut self) -> Option<Token> {
-        let number = self.read_while(|c| c.is_digit(10));
+        let number = self.read_while(TokenStream::is_digit);
         Some(Token::Num(number.parse::<i32>().unwrap()))
     }
 
     fn read_ident(&mut self) -> Option<Token> {
-        let id = self.read_while(|c| "?!-<>=0123456789".contains(c));
+        let id = self.read_while(TokenStream::is_id);
         let mut token: Token;
-        if KEYWORDS.contains(id) {
-            token = Token::Kw(id)
+        if TokenStream::is_keyword(id.clone()) {
+            token = Token::Kw(id);
         } else {
-            token = Token::Var(id)
+            token = Token::Var(id);
         }
-        Some(token);
+        Some(token)
     }
 
     fn read_escaped(&mut self, end: char) -> String {
@@ -89,7 +84,7 @@ impl<'a> TokenStream<'a> {
 
     fn read_next(&mut self) -> Option<Token> {
         // skip whitespace
-        self.read_while(|c| " \t\n".contains(c));
+        self.read_while(TokenStream::is_whitespace);
 
         if self.iter.eof() {
             return None;
@@ -108,12 +103,15 @@ impl<'a> TokenStream<'a> {
             }
 
             // digit
-            Some(c) if c.is_digit(10) => {
+            Some(c) if TokenStream::is_digit(c) => {
                 return self.read_number();
             }
 
             // identifier
-            Some(c) if IS_ID_START.is_match(&c.to_string()) => return self.read_ident(),
+            Some(c) if TokenStream::is_id_start(c) => return self.read_ident(),
+
+            Some(c) if TokenStream::is_punc(c) => return Some(
+                Token::Punc(self.iter.next().unwrap())),
 
             _ => {}
         }
@@ -132,5 +130,37 @@ impl<'a> TokenStream<'a> {
 
     pub fn croak(&self, msg: String) {
         self.iter.croak(msg);
+    }
+
+    fn is_whitespace(c: char) -> bool {
+        " \t\n".contains(c)
+    }
+
+    fn is_keyword(s: String) -> bool {
+        let KEYWORDS: Vec<String> = vec!["if".to_string(), "then".into(),
+            "else".into(), "lambda".into(), "true".into(), "false".into()];
+        KEYWORDS.iter().any(|x| x == s.trim())
+    }
+
+    fn is_digit(c: char) -> bool {
+        let sliced: &str = &c.to_string();
+        Regex::new(r"[0-9]/i").unwrap().is_match(sliced)
+    }
+
+    fn is_id_start(c: char) -> bool {
+        let sliced: &str = &c.to_string();
+        Regex::new(r"[a-z_]/i").unwrap().is_match(sliced)
+    }
+
+    fn is_id(c: char) -> bool {
+        TokenStream::is_id_start(c) || "?!-<>=0123456789".contains(c)
+    }
+
+    fn is_op_char(c: char) -> bool {
+        "+-*/%=&|<>!".contains(c)
+    }
+
+    fn is_punc(c: char) -> bool {
+        ",;(){}[]".contains(c)
     }
 }
