@@ -1,0 +1,6 @@
+[package]
+name = "interpreter"
+version = "0.1.0"
+authors = ["Mark Chandler <mark.allen.chandler@gmail.com>"]
+
+[dependencies]
