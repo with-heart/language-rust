@@ -1,7 +1,7 @@
 use input_stream::InputStream;
 use regex::Regex;
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum Token {
     Num(i32),
     Punc(char),
@@ -32,7 +32,7 @@ impl<'a> TokenStream<'a> {
 
     fn read_ident(&mut self) -> Option<Token> {
         let id = self.read_while(TokenStream::is_id);
-        let mut token: Token;
+        let token: Token;
         if TokenStream::is_keyword(id.clone()) {
             token = Token::Kw(id);
         } else {
@@ -90,42 +90,62 @@ impl<'a> TokenStream<'a> {
             return None;
         }
 
-        match self.iter.peek() {
+        let result = match self.iter.peek() {
             // comment
             Some('#') => {
+                println!("#");
                 self.skip_comment();
-                return self.read_next();
+                self.read_next()
             }
 
             // string
-            Some('"') => {
-                return self.read_string();
-            }
+            Some('"') => self.read_string(),
 
             // digit
             Some(c) if TokenStream::is_digit(c) => {
-                return self.read_number();
+                println!("is digit!!!");
+                self.read_number()
             }
 
             // identifier
-            Some(c) if TokenStream::is_id_start(c) => return self.read_ident(),
+            Some(c) if TokenStream::is_id_start(c) => self.read_ident(),
 
-            Some(c) if TokenStream::is_punc(c) => return Some(
-                Token::Punc(self.iter.next().unwrap())),
+            // punc
+            Some(c) if TokenStream::is_punc(c) => Some(Token::Punc(self.iter.next().unwrap())),
 
-            _ => {}
+            // operator
+            Some(c) if TokenStream::is_op_char(c) => {
+                Some(Token::Op(self.read_while(TokenStream::is_op_char)))
+            }
+
+            _ => None,
+        };
+
+        if result.is_none() {
+            let peek = self.peek().unwrap();
+            self.iter
+                .croak(format!("Can't handle character: {:?}", peek));
         }
-        None
+        result
     }
 
     pub fn next(&mut self) -> Option<Token> {
-        let cur = self.cur.clone();
-        self.cur = self.read_next();
-        if cur.is_none() { self.cur.clone() } else { cur }
+        let tok = self.cur.clone();
+        self.cur = None;
+        if tok.is_none() { self.read_next() } else { tok }
     }
 
-    pub fn peek(&self) -> Option<Token> {
-        self.cur.clone()
+    pub fn peek(&mut self) -> Option<Token> {
+        if self.cur.is_none() {
+            self.cur = self.read_next();
+            self.cur.clone()
+        } else {
+            self.cur.clone()
+        }
+    }
+
+    pub fn eof(&mut self) -> bool {
+        self.peek().is_none()
     }
 
     pub fn croak(&self, msg: String) {
@@ -137,19 +157,23 @@ impl<'a> TokenStream<'a> {
     }
 
     fn is_keyword(s: String) -> bool {
-        let KEYWORDS: Vec<String> = vec!["if".to_string(), "then".into(),
-            "else".into(), "lambda".into(), "true".into(), "false".into()];
-        KEYWORDS.iter().any(|x| x == s.trim())
+        let keywords: Vec<String> = vec!["if".to_string(),
+                                         "then".into(),
+                                         "else".into(),
+                                         "lambda".into(),
+                                         "true".into(),
+                                         "false".into()];
+        keywords.iter().any(|x| x == s.trim())
     }
 
     fn is_digit(c: char) -> bool {
         let sliced: &str = &c.to_string();
-        Regex::new(r"[0-9]/i").unwrap().is_match(sliced)
+        Regex::new(r"[0-9]").unwrap().is_match(sliced)
     }
 
     fn is_id_start(c: char) -> bool {
         let sliced: &str = &c.to_string();
-        Regex::new(r"[a-z_]/i").unwrap().is_match(sliced)
+        Regex::new(r"[a-zA-Z_]").unwrap().is_match(sliced)
     }
 
     fn is_id(c: char) -> bool {
@@ -162,5 +186,113 @@ impl<'a> TokenStream<'a> {
 
     fn is_punc(c: char) -> bool {
         ",;(){}[]".contains(c)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use token_stream::{TokenStream, Token};
+    use input_stream::InputStream;
+
+    #[test]
+    fn test_next() {
+        let string = String::from("\"test\"\"test2\"");
+        let mut ts = stream(&string);
+        let token = Token::Str("test".to_string());
+        let token2 = Token::Str("test2".to_string());
+
+        assert_eq!(ts.next().unwrap(), token);
+        assert_eq!(ts.next().unwrap(), token2);
+    }
+
+    #[test]
+    fn test_peek() {
+        let string = String::from("\"test\"\"test2\"");
+        let mut ts = stream(&string);
+        let token = Token::Str("test".to_string());
+        let token2 = Token::Str("test2".to_string());
+
+        assert_eq!(ts.peek().unwrap(), token);
+        assert_eq!(ts.peek().unwrap(), token);
+        ts.next();
+        assert_eq!(ts.peek().unwrap(), token2);
+    }
+
+    #[test]
+    fn test_eof() {
+        let string = String::from("a");
+        let mut ts = stream(&string);
+
+        assert!(!ts.eof());
+        ts.next();
+        assert!(ts.eof());
+    }
+
+    #[test]
+    fn test_num() {
+        let string = String::from("1");
+        let mut ts = stream(&string);
+        let token = Token::Num(1);
+
+        assert_eq!(ts.next().unwrap(), token);
+    }
+
+    #[test]
+    fn test_string() {
+        let string = String::from("\"test\"");
+        let mut ts = stream(&string);
+        let token = Token::Str("test".to_string());
+
+        assert_eq!(ts.next().unwrap(), token);
+    }
+
+    #[test]
+    fn test_punc() {
+        let string = String::from("(");
+        let mut ts = stream(&string);
+        let token = Token::Punc('(');
+
+        assert_eq!(ts.next().unwrap(), token);
+    }
+
+    #[test]
+    fn test_kw() {
+        let string = String::from("true");
+        let mut ts = stream(&string);
+        let token = Token::Kw("true".to_string());
+
+        assert_eq!(ts.next().unwrap(), token);
+    }
+
+    #[test]
+    fn test_var() {
+        let string = String::from("alpha");
+        let mut ts = stream(&string);
+        let token = Token::Var("alpha".to_string());
+
+        assert_eq!(ts.next().unwrap(), token);
+    }
+
+    #[test]
+    fn test_op() {
+        let string = String::from("!=");
+        let mut ts = stream(&string);
+        let token = Token::Op("!=".to_string());
+
+        assert_eq!(ts.next().unwrap(), token);
+    }
+
+    #[test]
+    fn test_skip_whitespace() {
+        let string = String::from("   1");
+        let mut ts = stream(&string);
+        let token = Token::Num(1);
+
+        assert_eq!(ts.next().unwrap(), token);
+    }
+
+    fn stream<'a>(s: &'a String) -> TokenStream<'a> {
+        let is = InputStream::new(&s);
+        TokenStream::new(is)
     }
 }
