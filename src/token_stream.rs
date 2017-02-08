@@ -9,7 +9,6 @@ pub enum Token {
     Kw(String),
     Var(String),
     Op(String),
-    Empty,
 }
 
 pub struct TokenStream<'a> {
