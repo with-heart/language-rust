@@ -17,11 +17,77 @@ pub struct TokenStream<'a> {
     iter: InputStream<'a>,
 }
 
+impl<'a> Iterator for TokenStream<'a> {
+    type Item = Token;
+
+    fn next(&mut self) -> Option<Token> {
+        let tok = self.cur.clone();
+        self.cur = None;
+        if tok.is_none() { self.read_next() } else { tok }
+    }
+}
+
 impl<'a> TokenStream<'a> {
     pub fn new(input: InputStream) -> TokenStream {
         TokenStream {
             cur: None,
             iter: input,
+        }
+    }
+
+    fn read_next(&mut self) -> Option<Token> {
+        // skip whitespace
+        self.read_while(TokenStream::is_whitespace);
+
+        if self.iter.eof() {
+            return None;
+        }
+
+        let result = match self.iter.peek() {
+            // comment
+            Some('#') => {
+                println!("#");
+                self.skip_comment();
+                self.read_next()
+            }
+
+            // string
+            Some('"') => self.read_string(),
+
+            // digit
+            Some(c) if TokenStream::is_digit(c) => {
+                println!("is digit!!!");
+                self.read_number()
+            }
+
+            // identifier
+            Some(c) if TokenStream::is_id_start(c) => self.read_ident(),
+
+            // punc
+            Some(c) if TokenStream::is_punc(c) => Some(Token::Punc(self.iter.next().unwrap())),
+
+            // operator
+            Some(c) if TokenStream::is_op_char(c) => {
+                Some(Token::Op(self.read_while(TokenStream::is_op_char)))
+            }
+
+            _ => None,
+        };
+
+        if result.is_none() {
+            let peek = self.peek().unwrap();
+            self.iter
+                .croak(format!("Can't handle character: {:?}", peek));
+        }
+        result
+    }
+
+    pub fn peek(&mut self) -> Option<Token> {
+        if self.cur.is_none() {
+            self.cur = self.read_next();
+            self.cur.clone()
+        } else {
+            self.cur.clone()
         }
     }
 
@@ -80,68 +146,6 @@ impl<'a> TokenStream<'a> {
             string.push(self.iter.next().unwrap());
         }
         string
-    }
-
-    fn read_next(&mut self) -> Option<Token> {
-        // skip whitespace
-        self.read_while(TokenStream::is_whitespace);
-
-        if self.iter.eof() {
-            return None;
-        }
-
-        let result = match self.iter.peek() {
-            // comment
-            Some('#') => {
-                println!("#");
-                self.skip_comment();
-                self.read_next()
-            }
-
-            // string
-            Some('"') => self.read_string(),
-
-            // digit
-            Some(c) if TokenStream::is_digit(c) => {
-                println!("is digit!!!");
-                self.read_number()
-            }
-
-            // identifier
-            Some(c) if TokenStream::is_id_start(c) => self.read_ident(),
-
-            // punc
-            Some(c) if TokenStream::is_punc(c) => Some(Token::Punc(self.iter.next().unwrap())),
-
-            // operator
-            Some(c) if TokenStream::is_op_char(c) => {
-                Some(Token::Op(self.read_while(TokenStream::is_op_char)))
-            }
-
-            _ => None,
-        };
-
-        if result.is_none() {
-            let peek = self.peek().unwrap();
-            self.iter
-                .croak(format!("Can't handle character: {:?}", peek));
-        }
-        result
-    }
-
-    pub fn next(&mut self) -> Option<Token> {
-        let tok = self.cur.clone();
-        self.cur = None;
-        if tok.is_none() { self.read_next() } else { tok }
-    }
-
-    pub fn peek(&mut self) -> Option<Token> {
-        if self.cur.is_none() {
-            self.cur = self.read_next();
-            self.cur.clone()
-        } else {
-            self.cur.clone()
-        }
     }
 
     pub fn eof(&mut self) -> bool {
